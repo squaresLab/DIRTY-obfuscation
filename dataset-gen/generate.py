@@ -4,7 +4,6 @@
 # This generates an aligned, parallel corpus for training translation models.
 
 # Requires Python 3
-
 import argparse
 import errno
 import hashlib
@@ -15,6 +14,8 @@ import tempfile as tf
 from multiprocessing import Pool
 from tqdm import tqdm
 from typing import Iterable, Tuple
+
+os.environ["LD_LIBRARY_PATH"] = "/home/lukedramko/anaconda3/lib"
 
 # from runner import Runner
 
@@ -32,7 +33,8 @@ class Runner:
         self.binaries_dir = args.binaries_dir
         self.output_dir = args.output_dir
         self._num_files = args.num_files
-        self.verbose = args.verbose
+        #self.verbose = args.verbose
+        self.verbose = True
         self.num_threads = args.num_threads
 
         self.env = os.environ.copy()
@@ -105,6 +107,7 @@ class Runner:
         timeout -- timeout in seconds (default no timeout)
         """
         idacall = [self.ida, "-B", f"-S{script}", file_name]
+        #print(f"idacall {idacall}")
         output = ""
         try:
             output = subprocess.check_output(idacall, env=env, timeout=timeout)
@@ -188,7 +191,7 @@ parser.add_argument(
     "--num-threads",
     metavar="N",
     help="number of threads to use",
-    default=4,
+    default=50,
     type=int,
 )
 parser.add_argument(
@@ -209,7 +212,7 @@ parser.add_argument(
 parser.add_argument(
     "-o", "--output_dir", metavar="OUTPUT_DIR", help="output directory", required=True,
 )
-parser.add_argument("--verbose", "-v", action="store_true")
+parser.add_argument("--verbose", "-v", action="store_true", default=True)
 
 
 args = parser.parse_args()

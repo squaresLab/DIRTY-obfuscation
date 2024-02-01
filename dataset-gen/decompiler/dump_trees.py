@@ -1,9 +1,10 @@
 import idaapi as ida
 
 import gzip
-import jsonlines
+#import jsonlines
 import os
 import pickle
+import json
 
 from typing import Dict, List
 
@@ -27,6 +28,7 @@ class CollectDecompiler(Collector):
         # Load the functions collected by CollectDebug
         with open(os.environ["FUNCTIONS"], "rb") as functions_fh:
             self.debug_functions: Dict[int, Function] = pickle.load(functions_fh)
+            print(f"DEBUG_FUNCTIONS {self.debug_functions}")
         print("Done")
         self.functions: List[CollectedFunction] = list()
         self.output_file_name = os.path.join(
@@ -37,9 +39,12 @@ class CollectDecompiler(Collector):
 
     def write_info(self) -> None:
         with gzip.open(self.output_file_name, 'wt') as output_file:
-            with jsonlines.Writer(output_file, compact=True) as writer:
-                for cf in self.functions:
-                    writer.write(cf.to_json())
+            # with jsonlines.Writer(output_file, compact=True) as writer:
+            #     for cf in self.functions:
+            #         writer.write(cf.to_json())
+            for cf in self.functions:
+                output_file.write(json.dumps(cf.to_json()))
+                output_file.write("\n")
 
     def activate(self, ctx) -> int:
         """Collects types, user-defined variables, their locations in addition to the
@@ -53,8 +58,10 @@ class CollectDecompiler(Collector):
             try:
                 cfunc = ida.decompile(f)
             except ida.DecompilationFailure:
+                #print("ida decompilation failure")
                 continue
             if cfunc is None:
+                #print("cfunc is None after ida.decompile")
                 continue
 
             # Function info
@@ -74,6 +81,7 @@ class CollectDecompiler(Collector):
             raw_code = ""
             for line in cfunc.get_pseudocode():
                 raw_code += f"{' '.join(tag_remove(line.line).split())}\n"
+    
             ast = AST(function=cfunc)
             decompiler = Function(
                 ast=ast,

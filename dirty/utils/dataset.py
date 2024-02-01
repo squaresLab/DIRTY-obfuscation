@@ -45,10 +45,15 @@ class Example:
             location_from_json_key(loc): Variable.from_json(var)
             for loc, var in d["source"].items()
         }
-        target = {
-            location_from_json_key(loc): Variable.from_json(var)
-            for loc, var in d["target"].items()
-        }
+
+        if d["target"] is not None:
+            target = {
+                location_from_json_key(loc): Variable.from_json(var)
+                for loc, var in d["target"].items()
+            }
+        else:
+            target = {}
+        
         return cls(
             d["name"],
             d["code_tokens"],
@@ -61,7 +66,10 @@ class Example:
     def to_json(self):
         assert self._is_valid
         source = {loc.json_key(): var.to_json() for loc, var in self.source.items()}
-        target = {loc.json_key(): var.to_json() for loc, var in self.target.items()}
+        if self.target is not None:
+            target = {loc.json_key(): var.to_json() for loc, var in self.target.items()}
+        else:
+            target = {}
         return {
             "name": self.name,
             "code_tokens": self.code_tokens,
@@ -75,22 +83,29 @@ class Example:
         name = cf.decompiler.name
         raw_code = cf.decompiler.raw_code
         code_tokens = tokenize_raw_code(raw_code)
-
+        
         source = {**cf.decompiler.local_vars, **cf.decompiler.arguments}
         target = {**cf.debug.local_vars, **cf.debug.arguments}
 
         # Remove variables that overlap on memory or don't appear in the code tokens
         source_code_tokens_set = set(code_tokens)
         target_code_tokens_set = set(tokenize_raw_code(cf.debug.raw_code))
-
+        
         source = Example.filter(source, source_code_tokens_set)
         target = Example.filter(target, target_code_tokens_set, set(source.keys()))
 
+        # originally both lines were outside if statement
+        # if cf.debug.raw_code is not None:
+        #     target_code_tokens_set = set(tokenize_raw_code(cf.debug.raw_code))
+        #     target = Example.filter(target, target_code_tokens_set, set(source.keys()))
+
         # Assign type "Disappear" to variables not existing in the ground truth
         varnames = set()
-        for loc in source.keys():
-            if loc not in target.keys():
-                target[loc] = Variable(Disappear(), "", False)
+        if target is not None:
+            for loc in source.keys():
+                if loc not in target.keys():
+                    target[loc] = Variable(Disappear(), "", False)
+        
         # Add special tokens to variables  to prevnt being sub-tokenized in BPE
         for var in source.values():
             varname = var.name

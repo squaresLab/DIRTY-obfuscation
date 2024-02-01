@@ -167,6 +167,7 @@ class CollectedFunction:
         self.decompiler = decompiler
 
     def to_json(self):
+        print(f"self.debug.raw_code {self.debug.raw_code}")
         return {
             "e": self.ea,
             "b": self.debug.to_json(),

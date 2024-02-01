@@ -17,6 +17,9 @@ def canonicalize_code(code):
 
 
 def tokenize_raw_code(raw_code):
+    #print(f"raw code {raw_code}")
+    if raw_code is None:
+        return None
     lexer = Lexer(raw_code)
     tokens = []
     for token_type, token in lexer.get_tokens():
@@ -24,5 +27,6 @@ def tokenize_raw_code(raw_code):
             token = str(token_type).split(".")[2]
 
         tokens.append(token)
+    #print(f"TOKENS {tokens}")
 
     return tokens

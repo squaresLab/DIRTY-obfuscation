@@ -5,10 +5,11 @@ Usage:
 
 Options:
     -h --help                  Show this screen.
-    --max=<int>                max dataset size [default: 10000]
+    --max=<int>                max dataset size [default: 55000]
     --shard-size=<int>         shard size [default: 5000]
     --test-file=<file>         test file
     --no-filtering             do not filter files
+    --meta-data=<str>          absolute path to the meta data file
 """
 
 import glob
@@ -19,6 +20,7 @@ import random
 import shutil
 import sys
 import tarfile
+from pathlib import Path
 from json import dumps
 from multiprocessing import Process
 from typing import Tuple
@@ -43,7 +45,10 @@ def example_generator(json_str_list):
             json_dict = json.loads(json_str)
         except ValueError:
             continue
+
+        # print(f"meta {meta}")
         cf = CollectedFunction.from_json(json_dict)
+
         example = Example.from_cf(
             cf, binary_file=meta, max_stack_length=1024, max_type_size=1024
         )
@@ -66,7 +71,8 @@ def json_line_reader(args):
                 json_str = line.strip()
                 if json_str:
                     func_json_list.append(
-                        (json_str, dict(file_name=fname[:-3], line_num=line_no))
+                        (json_str, dict(
+                            file_name=fname[:-3], line_num=line_no))
                     )
     except (gzip.BadGzipFile, EOFError):
         print(f"Bad Gzip file {bin_file_name}")
@@ -118,7 +124,7 @@ def main(args):
     os.system(f"mkdir -p {tgt_folder}")
     os.system(f"mkdir -p {tgt_folder}/files")
     os.system(f"mkdir -p {tgt_folder}/types")
-    num_workers = 16
+    num_workers = 20
 
     valid_example_count = 0
 
@@ -135,7 +141,9 @@ def main(args):
         for examples in tqdm(example_iter):
             if not examples:
                 continue
-            json_file_name = examples[0].binary_file["file_name"].split("/")[-1]
+            json_file_name = examples[0].binary_file["file_name"].split(
+                "/")[-1]
+
             with open(os.path.join(tgt_folder, "files/", json_file_name), "w") as f:
                 for example in examples:
                     f.write(dumps(example.to_json()) + "\n")
@@ -166,12 +174,13 @@ def main(args):
             ]
         dev_file_num = 0
     else:
-        print(f"randomly sample test file {test_file}")
+        # print(f"randomly sample test file {test_file}")
         test_file_num = int(file_num * 0.1)
         dev_file_num = int(file_num * 0.1)
-        test_files = list(
-            np.random.choice(all_files, size=test_file_num, replace=False)
-        )
+
+        # split test set by repository
+        test_files = test_set_split_by_repo(args, all_files, test_file_num)
+        print(f"split the test_files by repository")
 
     test_files_set = set(test_files)
     train_files = [fname for fname in all_files if fname not in test_files_set]
@@ -215,7 +224,7 @@ def main(args):
     )
     print("dump training files")
     shards = [
-        train_files[i : i + shard_size] for i in range(0, len(train_files), shard_size)
+        train_files[i: i + shard_size] for i in range(0, len(train_files), shard_size)
     ]
     for shard_id, shard_files in enumerate(shards):
         print(f"Preparing shard {shard_id}, {len(shard_files)} files: ")
@@ -269,6 +278,54 @@ def main(args):
     _dump_dev_file("dev.tar", dev_files)
     print("dump test files")
     _dump_dev_file("test.tar", test_files)
+
+
+def test_set_split_by_repo(args, all_files, file_num):
+    # create two dictionaries with unique key of repo_owner/repo_name
+    # randomly sample repos, add all their binaries and return test_set with ~10% split
+    # param: all_files is List[] of all binary files
+    # param: file_num is the number of files to put in test set
+    print("Entered test_set_split().")
+
+    with open(args["--meta-data"], "r") as fp:
+        content = json.load(fp)
+
+    meta_data = {d['hash_name']: d for d in content}
+    print("Meta-data file created.")
+
+    binaries_num = {}
+    binaries_list = {}
+    for file in tqdm(all_files):
+        hash_name = Path(file).stem.split("_")[0]
+        entry = meta_data[str(hash_name)]
+
+        # in case we don't find the hash_name
+        if entry is None:
+            print(f"{hash_name} not found in {args['--meta-data']} file.")
+            continue
+
+        repo_key = f"{entry['repo_owner']}/{entry['repo_name']}"
+        if repo_key in binaries_list:
+            binaries_list[repo_key].append(file)
+            binaries_num[repo_key] += 1
+        else:
+            binaries_list[repo_key] = [file]
+            binaries_num[repo_key] = 1
+
+    print("Created binary dictionaries, processed by repository.")
+
+    # now randomly sample from the repo keys (without replacements)
+    repos = list(binaries_list.keys())
+    chosen = 0
+    test_files = []
+    while chosen < file_num:
+        random_repo = np.random.choice(repos)
+        test_files += binaries_list[random_repo]
+        chosen += binaries_num[random_repo]
+        repos.remove(random_repo)
+    print("Chose random repositories to include in data set.")
+
+    return test_files
 
 
 if __name__ == "__main__":
